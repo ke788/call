@@ -283,16 +283,16 @@
 
   <script>
     // Firebase configuration
-    const firebaseConfig = {
-      apiKey: "AIzaSyBUmxEQRSirDF_hc3rvgzwU5vRc5uVifcY",
-      authDomain: "video-call-auth-e2237.firebaseapp.com",
-      projectId: "video-call-auth-e2237",
-      storageBucket: "video-call-auth-e2237.firebasestorage.app",
-      messagingSenderId: "203016834335",
-      appId: "1:203016834335:web:fddc9c06f433a64afcf42a",
-      measurementId: "G-05HNPKVC14"
-    };
-
+    
+const firebaseConfig = {
+  apiKey: "AIzaSyBUmxEQRSirDF_hc3rvgzwU5vRc5uVifcY",
+  authDomain: "video-call-auth-e2237.firebaseapp.com",
+  projectId: "video-call-auth-e2237",
+  storageBucket: "video-call-auth-e2237.appspot.com",   // <-- FIXED
+  messagingSenderId: "203016834335",
+  appId: "1:203016834335:web:fddc9c06f433a64afcf42a",
+  measurementId: "G-05HNPKVC14"
+};
     // Initialize Firebase
     const app = firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
@@ -368,8 +368,7 @@
           
           // Fallback: Save to Firestore without the image URL if Storage fails
           const submission = {
-            redemptionCode: redemptionCode,
-            cardTypes: selectedCards,
+            redemptionCode: redemptionCode,   cardTypes: selectedCards,
             time: new Date().toLocaleString(),
             timestamp: firebase.firestore.FieldValue.serverTimestamp(),
             error: "Image upload failed, but data was saved"
